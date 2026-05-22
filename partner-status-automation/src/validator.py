@@ -107,7 +107,7 @@ def validate_single(
         key=key,
         current_feedback=feedback,
         current_detail=detail,
-        suggested_feedback=suggest_feedback_from_detail(detail, keyword_rules or {}),
+        suggested_feedback="",  # filled by LLM in WorkerThread; keywords not used for suggestion
     )
 
     # Rule 1

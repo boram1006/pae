@@ -128,51 +128,58 @@ class WorkerThread(QThread):
                 keyword_rules=self.keyword_rules,
             )
 
+            llm_status = ""
             if self.openai_api_key:
-                self._apply_llm_suggestions(match_result, val_results)
+                llm_status = self._apply_llm_suggestions(match_result, val_results)
 
             debug_info = {
                 "validation_ran": True,
                 "filter_date": self.filter_date,
                 "filter_active": self.filter_date is not None,
+                "llm_status": llm_status,
             }
             self.finished.emit(match_result, val_results, debug_info)
         except Exception:
             self.error.emit(traceback.format_exc())
 
-    def _apply_llm_suggestions(self, match_result, val_results):
+    def _apply_llm_suggestions(self, match_result, val_results) -> str:
+        """Run LLM classification and return a human-readable status string."""
         from src.llm_suggester import suggest_feedback_batch
         from src.validator import ValidationStatus
 
         vr_by_key = {v.key: v for v in val_results}
-        # Run LLM on every row that has detail text (not just already-flagged rows)
         target_items = [
             (v.key, v.current_detail)
             for v in val_results
             if v.current_detail.strip()
         ]
-        if not target_items:
-            return
+        total_rows = len(val_results)
+        detail_rows = len(target_items)
 
         labels = self.feedback_labels or list({
             r.original_feedback for r in match_result.matched if r.original_feedback
         })
-        if not labels:
-            return
 
-        suggestions = suggest_feedback_batch(
+        suggestions, error = suggest_feedback_batch(
             target_items, labels, self.openai_api_key
         )
+
         for key, label in suggestions.items():
             if key not in vr_by_key:
                 continue
             vr = vr_by_key[key]
             vr.suggested_feedback = label
-            # If LLM disagrees with current feedback and row was wrongly NORMAL,
-            # bump status to CHECK_NEEDED so it appears in the review tab
             if label != vr.current_feedback and vr.status not in _FEEDBACK_CHECK_STATUSES:
                 vr.status = ValidationStatus.CHECK_NEEDED
                 vr.note = f"LLM 제안: {label}"
+
+        if error and not suggestions:
+            return f"LLM 오류: {error}"
+        return (
+            f"LLM: 전체 {total_rows}행 중 상세내용 있는 {detail_rows}행 전송 → "
+            f"{len(suggestions)}건 분류 완료"
+            + (f"  (오류: {error})" if error else "")
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -462,6 +469,11 @@ class MainWindow(QMainWindow):
         self._openai_key_edit.setMinimumWidth(320)
         api_row.addWidget(self._openai_key_edit, stretch=1)
         lay.addLayout(api_row)
+
+        self._llm_status_lbl = QLabel("")
+        self._llm_status_lbl.setWordWrap(True)
+        self._llm_status_lbl.setStyleSheet("color:#555; font-size:11px; padding:2px 0;")
+        lay.addWidget(self._llm_status_lbl)
 
         return w
 
@@ -824,6 +836,17 @@ class MainWindow(QMainWindow):
         self._populate_tabs(match_result, val_results)
         self._update_val_debug_label(val_results, debug_info)
         self._update_unknown_feedback_label()
+
+        llm_status = debug_info.get("llm_status", "")
+        if llm_status:
+            color = "#c0392b" if "오류" in llm_status else "#27ae60"
+            self._llm_status_lbl.setStyleSheet(f"color:{color}; font-size:11px; padding:2px 0;")
+            self._llm_status_lbl.setText(llm_status)
+        else:
+            self._llm_status_lbl.setText(
+                "LLM 미사용 (API 키를 입력하면 피드백 제안이 개선됩니다)"
+            )
+            self._llm_status_lbl.setStyleSheet("color:#aaa; font-size:11px; padding:2px 0;")
 
         self._summary_strip.setVisible(True)
         self._inner_tabs.setVisible(True)
