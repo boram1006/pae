@@ -100,6 +100,8 @@ class WorkerThread(QThread):
         col_config: ColumnConfig,
         filter_date: Optional[date],
         keyword_rules: Optional[Dict] = None,
+        openai_api_key: str = "",
+        feedback_labels: Optional[List[str]] = None,
     ):
         super().__init__()
         self.final_path = final_path
@@ -109,6 +111,8 @@ class WorkerThread(QThread):
         self.col_config = col_config
         self.filter_date = filter_date
         self.keyword_rules = keyword_rules or {}
+        self.openai_api_key = openai_api_key
+        self.feedback_labels = feedback_labels or []
 
     def run(self):
         try:
@@ -124,6 +128,9 @@ class WorkerThread(QThread):
                 keyword_rules=self.keyword_rules,
             )
 
+            if self.openai_api_key:
+                self._apply_llm_suggestions(match_result, val_results)
+
             debug_info = {
                 "validation_ran": True,
                 "filter_date": self.filter_date,
@@ -132,6 +139,31 @@ class WorkerThread(QThread):
             self.finished.emit(match_result, val_results, debug_info)
         except Exception:
             self.error.emit(traceback.format_exc())
+
+    def _apply_llm_suggestions(self, match_result, val_results):
+        from src.llm_suggester import suggest_feedback_batch
+
+        vr_by_key = {v.key: v for v in val_results}
+        target_items = [
+            (v.key, v.current_detail)
+            for v in val_results
+            if v.status in _FEEDBACK_CHECK_STATUSES and v.current_detail.strip()
+        ]
+        if not target_items:
+            return
+
+        labels = self.feedback_labels or list({
+            r.original_feedback for r in match_result.matched if r.original_feedback
+        })
+        if not labels:
+            return
+
+        suggestions = suggest_feedback_batch(
+            target_items, labels, self.openai_api_key
+        )
+        for key, label in suggestions.items():
+            if key in vr_by_key:
+                vr_by_key[key].suggested_feedback = label
 
 
 # ---------------------------------------------------------------------------
@@ -412,6 +444,16 @@ class MainWindow(QMainWindow):
 
         lay.addLayout(_row("필수  최종 완성 파일:", "최종 파일 선택", "_final_path_lbl", self._select_final))
         lay.addLayout(_row("필수  알바 취합 파일:", "알바 파일 선택", "_alba_path_lbl",  self._select_alba))
+
+        api_row = QHBoxLayout()
+        api_row.addWidget(QLabel("OpenAI API Key (선택):"))
+        self._openai_key_edit = QLineEdit()
+        self._openai_key_edit.setPlaceholderText("sk-...  (입력 시 LLM 피드백 제안 활성화)")
+        self._openai_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self._openai_key_edit.setMinimumWidth(320)
+        api_row.addWidget(self._openai_key_edit, stretch=1)
+        lay.addLayout(api_row)
+
         return w
 
     def _build_sheet_section(self) -> QWidget:
@@ -742,6 +784,8 @@ class MainWindow(QMainWindow):
             col_config=col_config,
             filter_date=filter_date,
             keyword_rules=self._feedback_manager.get_keyword_rules(),
+            openai_api_key=self._openai_key_edit.text().strip(),
+            feedback_labels=self._feedback_manager.get_active_labels(),
         )
         self._worker.finished.connect(self._on_run_finished)
         self._worker.error.connect(self._on_run_error)
