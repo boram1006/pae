@@ -142,12 +142,14 @@ class WorkerThread(QThread):
 
     def _apply_llm_suggestions(self, match_result, val_results):
         from src.llm_suggester import suggest_feedback_batch
+        from src.validator import ValidationStatus
 
         vr_by_key = {v.key: v for v in val_results}
+        # Run LLM on every row that has detail text (not just already-flagged rows)
         target_items = [
             (v.key, v.current_detail)
             for v in val_results
-            if v.status in _FEEDBACK_CHECK_STATUSES and v.current_detail.strip()
+            if v.current_detail.strip()
         ]
         if not target_items:
             return
@@ -162,8 +164,15 @@ class WorkerThread(QThread):
             target_items, labels, self.openai_api_key
         )
         for key, label in suggestions.items():
-            if key in vr_by_key:
-                vr_by_key[key].suggested_feedback = label
+            if key not in vr_by_key:
+                continue
+            vr = vr_by_key[key]
+            vr.suggested_feedback = label
+            # If LLM disagrees with current feedback and row was wrongly NORMAL,
+            # bump status to CHECK_NEEDED so it appears in the review tab
+            if label != vr.current_feedback and vr.status not in _FEEDBACK_CHECK_STATUSES:
+                vr.status = ValidationStatus.CHECK_NEEDED
+                vr.note = f"LLM 제안: {label}"
 
 
 # ---------------------------------------------------------------------------
