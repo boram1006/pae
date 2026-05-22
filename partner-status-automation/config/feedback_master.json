@@ -2,60 +2,88 @@
   "version": 1,
   "items": [
     {
-      "id": "CALL_DONE",
-      "label": "통화완료",
+      "id": "QUOTE_SUBMITTED_DONE",
+      "label": "1-1.견적제출_견적제출완료",
       "active": true,
-      "aliases": ["통화 완료", "연락 완료"],
+      "aliases": [],
       "sort_order": 10
     },
     {
-      "id": "NO_ANSWER",
-      "label": "부재",
+      "id": "QUOTE_SUBMITTED_EXTENDED",
+      "label": "1-2.견적제출_제출기한 연장 요청(부분견적포함)",
       "active": true,
-      "aliases": ["미연결", "전화 안받음", "부재중"],
+      "aliases": [],
       "sort_order": 20
     },
     {
-      "id": "CALL_BACK",
-      "label": "재통화 요청",
+      "id": "QUOTE_IMPOSSIBLE_NOT_HANDLED",
+      "label": "2-1.견적불가_미취급품목",
       "active": true,
-      "aliases": ["다시 전화", "재연락 필요"],
+      "aliases": [],
       "sort_order": 30
     },
     {
-      "id": "QUOTE_EXPECTED",
-      "label": "견적 회신 예정",
+      "id": "QUOTE_IMPOSSIBLE_PRICE",
+      "label": "2-2.견적불가_단가인상/수급불가",
       "active": true,
-      "aliases": ["회신 예정", "견적 예정"],
+      "aliases": [],
       "sort_order": 40
     },
     {
-      "id": "QUOTE_RECEIVED",
-      "label": "견적 회신 완료",
+      "id": "QUOTE_IMPOSSIBLE_NO_DEAL",
+      "label": "2-3.견적불가_거래의사없음",
       "active": true,
-      "aliases": ["회신 완료", "견적 받음"],
+      "aliases": [],
       "sort_order": 50
     },
     {
-      "id": "NEEDS_CHECK",
-      "label": "담당자 확인 필요",
+      "id": "QUOTE_IMPOSSIBLE_MAKER_POLICY",
+      "label": "2-4.견적불가_제조사정책 및 비경쟁의사",
       "active": true,
-      "aliases": ["확인 필요", "담당 확인"],
+      "aliases": [],
       "sort_order": 60
     },
     {
-      "id": "REJECTED",
-      "label": "거절",
+      "id": "QUOTE_IMPOSSIBLE_LOW_COMPETITIVENESS",
+      "label": "2-5.견적불가_경쟁력 낮아 자체 견적 포기",
       "active": true,
-      "aliases": ["진행 불가", "불가"],
+      "aliases": [],
       "sort_order": 70
     },
     {
-      "id": "OTHER",
-      "label": "기타",
+      "id": "QUOTE_IMPOSSIBLE_ETC",
+      "label": "2-6.견적불가_기타(대응여력 부족등)",
       "active": true,
       "aliases": [],
-      "sort_order": 999
+      "sort_order": 80
+    },
+    {
+      "id": "PENDING_EMAIL_DELAY",
+      "label": "3-1.대기/보류_이메일 확인 지연",
+      "active": true,
+      "aliases": [],
+      "sort_order": 90
+    },
+    {
+      "id": "PENDING_INTERNAL_DECISION",
+      "label": "3-2.대기/보류_내부 의사 결정 中",
+      "active": true,
+      "aliases": [],
+      "sort_order": 100
+    },
+    {
+      "id": "PENDING_SOURCING_CHECK",
+      "label": "3-3.대기/보류_소싱담당자 추가 확인 필요",
+      "active": true,
+      "aliases": [],
+      "sort_order": 110
+    },
+    {
+      "id": "OTHER_UNREACHABLE",
+      "label": "4.기타_수신불가 재독려필요",
+      "active": true,
+      "aliases": [],
+      "sort_order": 120
     }
   ]
 }
