@@ -82,6 +82,12 @@ _FEEDBACK_CHECK_STATUSES = {
     ValidationStatus.NOT_VERIFIED,
 }
 
+# 전체 결과 탭 컬럼 정의 (인덱스를 상수로 관리해 sync 로직과 공유)
+_ALL_TAB_HEADERS = ["키값", "구분", "최종행", "알바행", "날짜필터", "최종 Feedback", "수정됨"]
+_ALL_IDX_KEY      = 0
+_ALL_IDX_FEEDBACK = 5
+_ALL_IDX_CHANGED  = 6
+
 # ---------------------------------------------------------------------------
 # Background worker
 # ---------------------------------------------------------------------------
@@ -298,6 +304,7 @@ class MainWindow(QMainWindow):
         self._val_results: List[ValidationResult] = []
         self._val_debug: Dict = {}
         self._val_matched_rows: List[MatchedRow] = []   # mirrors rows in validation table
+        self._all_tab_row_by_key: Dict[str, int] = {}   # key → row index in _tab_all (matched rows only)
         self._feedback_manager = FeedbackManager(str(_FEEDBACK_MASTER_PATH))
         self._discovered_feedback: set = set()
         self._worker: Optional[WorkerThread] = None
@@ -591,7 +598,7 @@ class MainWindow(QMainWindow):
         self._tab_alba_only    = _make_table(["키값", "알바행"] + list(_FIELD_LABELS.values())[1:])
         self._tab_date_filtered = _make_table(["키값", "최종행", "알바행", "독려일(원본)"])
         self._tab_validation   = _make_table(val_cols)
-        self._tab_all          = _make_table(["키값", "구분", "최종행", "알바행", "날짜필터", "수정됨"])
+        self._tab_all          = _make_table(_ALL_TAB_HEADERS)
 
         tabs.addTab(self._tab_matched,       "매칭 성공")
         tabs.addTab(self._tab_unmatched,     "미매칭")
@@ -994,22 +1001,24 @@ class MainWindow(QMainWindow):
 
         # --- Tab: 전체 결과 ---
         all_rows = []
+        self._all_tab_row_by_key = {}
         for row in mr.matched:
             v = val_by_key.get(row.key)
             v_status = v.status.value if v else "—"
             changed  = "수정됨" if row.feedback_changed else ""
-            all_rows.append([row.key, f"매칭 성공 ({v_status})", row.final_row, row.alba_row, "통과", changed])
+            self._all_tab_row_by_key[row.key] = len(all_rows)
+            all_rows.append([
+                row.key, f"매칭 성공 ({v_status})",
+                row.final_row, row.alba_row, "통과",
+                row.final_feedback, changed,
+            ])
         for row in mr.date_filtered:
-            all_rows.append([row.key, "날짜 필터 제외", row.final_row, row.alba_row, "제외", ""])
+            all_rows.append([row.key, "날짜 필터 제외", row.final_row, row.alba_row, "제외", row.original_feedback, ""])
         for row in mr.unmatched:
-            all_rows.append([row.key, "미매칭", row.final_row, "—", "—", ""])
+            all_rows.append([row.key, "미매칭", row.final_row, "—", "—", "", ""])
         for row in mr.alba_only:
-            all_rows.append([row.key, "알바만 존재", "—", row.alba_row, "—", ""])
-        _fill_table(
-            self._tab_all,
-            ["키값", "구분", "최종행", "알바행", "날짜필터", "수정됨"],
-            all_rows,
-        )
+            all_rows.append([row.key, "알바만 존재", "—", row.alba_row, "—", "", ""])
+        _fill_table(self._tab_all, _ALL_TAB_HEADERS, all_rows)
 
         # Update tab titles with counts
         self._inner_tabs.setTabText(0, f"매칭 성공 ({len(mr.matched)})")
@@ -1082,20 +1091,40 @@ class MainWindow(QMainWindow):
             options.append(orig)
         return options
 
+    def _sync_all_tab_row(self, key: str, final_feedback: str, feedback_changed: bool) -> None:
+        """전체 결과 탭에서 해당 key 행의 최종 Feedback·수정됨 컬럼을 즉시 갱신한다."""
+        row_idx = self._all_tab_row_by_key.get(key)
+        if row_idx is None:
+            return
+        fb_item = self._tab_all.item(row_idx, _ALL_IDX_FEEDBACK)
+        ch_item = self._tab_all.item(row_idx, _ALL_IDX_CHANGED)
+        if fb_item:
+            fb_item.setText(final_feedback)
+        if ch_item:
+            ch_item.setText("수정됨" if feedback_changed else "")
+        bg = QColor("#fff3cd") if feedback_changed else QColor("#ffffff")
+        for c in range(self._tab_all.columnCount()):
+            cell = self._tab_all.item(row_idx, c)
+            if cell:
+                cell.setBackground(bg)
+
     def _on_feedback_changed(self, matched_row: MatchedRow, new_value: str, table_row: int):
-        matched_row.final_feedback  = new_value
+        matched_row.final_feedback   = new_value
         matched_row.feedback_changed = (new_value != matched_row.original_feedback)
 
+        # ── Feedback 확인 필요 탭 갱신 ──────────────────────────────
         changed_text = "수정됨" if matched_row.feedback_changed else ""
         changed_item = self._tab_validation.item(table_row, 7)
         if changed_item:
             changed_item.setText(changed_text)
-        bg_color = QColor("#fff3cd") if matched_row.feedback_changed else None
-        if bg_color:
-            for c in range(self._tab_validation.columnCount()):
-                cell = self._tab_validation.item(table_row, c)
-                if cell:
-                    cell.setBackground(bg_color)
+        bg_val = QColor("#fff3cd") if matched_row.feedback_changed else QColor("#ffffff")
+        for c in range(self._tab_validation.columnCount()):
+            cell = self._tab_validation.item(table_row, c)
+            if cell:
+                cell.setBackground(bg_val)
+
+        # ── 전체 결과 탭 즉시 동기화 ────────────────────────────────
+        self._sync_all_tab_row(matched_row.key, new_value, matched_row.feedback_changed)
 
     # ======================================================================
     # Feedback management tab actions
