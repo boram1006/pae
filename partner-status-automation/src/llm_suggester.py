@@ -32,6 +32,7 @@ def suggest_feedback_batch(
     except ImportError:
         return {}, "openai 패키지 미설치 (pip install openai)"
 
+    print(f"[LLM] suggest_feedback_batch 호출: {len(items)}행, {len(feedback_labels)}개 레이블, model={model}", flush=True)
     client = OpenAI(api_key=api_key)
     label_set = set(feedback_labels)
     labels_str = "\n".join(f"- {lb}" for lb in sorted(feedback_labels))
@@ -59,6 +60,7 @@ def suggest_feedback_batch(
             + numbered
         )
         try:
+            print(f"[LLM] API 호출 중 (batch {batch_start//20+1}, {len(batch)}행)...", flush=True)
             resp = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -69,9 +71,13 @@ def suggest_feedback_batch(
                 max_tokens=len(batch) * 80,
             )
             answer = resp.choices[0].message.content or ""
+            print(f"[LLM] 응답:\n{answer[:500]}", flush=True)
+            before = len(results)
             _parse_batch_response(answer, batch, label_set, feedback_labels, results)
+            print(f"[LLM] 파싱 결과: {len(results)-before}건 추가", flush=True)
         except Exception as exc:
             last_error = str(exc)
+            print(f"[LLM] 오류: {exc}", flush=True)
 
     return results, last_error
 

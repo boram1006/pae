@@ -89,6 +89,16 @@ _ALL_IDX_CHANGED  = 6
 # Background worker
 # ---------------------------------------------------------------------------
 
+class _NoScrollComboBox(QComboBox):
+    """QComboBox that ignores wheel events unless it already has keyboard focus.
+    Prevents accidental value changes when the user scrolls the table."""
+    def wheelEvent(self, event):
+        if self.hasFocus():
+            super().wheelEvent(event)
+        else:
+            event.ignore()
+
+
 class WorkerThread(QThread):
     finished = Signal(object, object, object)  # match_result, val_results, debug_info
     error = Signal(str)
@@ -128,9 +138,16 @@ class WorkerThread(QThread):
                 keyword_rules=self.keyword_rules,
             )
 
+            key_len = len(self.openai_api_key)
+            detail_count = sum(1 for v in val_results if v.current_detail.strip())
+            print(f"[LLM] API key 길이={key_len}  val_results={len(val_results)}  상세내용 있는 행={detail_count}  labels={len(self.feedback_labels)}", flush=True)
+
             llm_status = ""
             if self.openai_api_key:
                 llm_status = self._apply_llm_suggestions(match_result, val_results)
+                print(f"[LLM] 완료: {llm_status}", flush=True)
+            else:
+                print("[LLM] API 키 없음 — 건너뜀", flush=True)
 
             debug_info = {
                 "validation_ran": True,
@@ -1026,8 +1043,10 @@ class MainWindow(QMainWindow):
             self._tab_validation.setItem(r, 0, _table_item(v.key))
             # col 1: 원래 Feedback (read-only)
             self._tab_validation.setItem(r, 1, _table_item(matched_row.original_feedback))
-            # col 2: 제안 Feedback (editable combo — keyword suggestion pre-filled)
-            combo = QComboBox()
+            # col 2: 제안 Feedback (editable combo — LLM/keyword suggestion pre-filled)
+            combo = _NoScrollComboBox()
+            combo.setEditable(True)          # 직접 타이핑 수정 가능
+            combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
             options = self._get_feedback_options(matched_row)
             combo.addItems(options)
             initial = v.suggested_feedback or matched_row.final_feedback
