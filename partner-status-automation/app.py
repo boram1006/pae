@@ -542,7 +542,7 @@ class MainWindow(QMainWindow):
     def _build_inner_result_tabs(self) -> QTabWidget:
         tabs = QTabWidget()
         val_cols = [
-            "키값", "원래 Feedback", "제안 Feedback", "상세내용", "검증 결과", "수정됨",
+            "키값", "원래 Feedback", "제안 Feedback", "상세내용", "검증 결과",
         ]
         self._tab_matched      = _make_table(["키값", "최종행", "알바행"] + list(_FIELD_LABELS.values())[1:])
         self._tab_unmatched    = _make_table(["키값", "최종행"])
@@ -960,7 +960,7 @@ class MainWindow(QMainWindow):
             bg = _status_color(v.status)
 
             # col 0: 키값
-            self._tab_validation.setItem(r, 0, _table_item(v.key, bg))
+            self._tab_validation.setItem(r, 0, _table_item(v.key))
             # col 1: 원래 Feedback (read-only)
             self._tab_validation.setItem(r, 1, _table_item(matched_row.original_feedback))
             # col 2: 제안 Feedback (editable combo — keyword suggestion pre-filled)
@@ -988,11 +988,8 @@ class MainWindow(QMainWindow):
             self._tab_validation.setCellWidget(r, 2, combo)
             # col 3: 상세내용
             self._tab_validation.setItem(r, 3, _table_item(v.current_detail))
-            # col 4: 검증 결과
+            # col 4: 검증 결과 (status 색은 여기에만 적용)
             self._tab_validation.setItem(r, 4, _table_item(v.status.value, bg))
-            # col 5: 수정됨
-            changed_text = "수정됨" if matched_row.feedback_changed else ""
-            self._tab_validation.setItem(r, 5, _table_item(changed_text))
 
         self._tab_validation.resizeColumnsToContents()
         self._tab_validation.horizontalHeader().setSectionResizeMode(
@@ -1029,24 +1026,13 @@ class MainWindow(QMainWindow):
         matched_row.final_feedback   = new_value
         matched_row.feedback_changed = (new_value != matched_row.original_feedback)
 
-        # ── Feedback 확인 필요 탭 갱신 ──────────────────────────────
-        changed_text = "수정됨" if matched_row.feedback_changed else ""
-        changed_item = self._tab_validation.item(table_row, 5)  # col 5: 수정됨
-        if changed_item:
-            changed_item.setText(changed_text)
-        bg_val = QColor("#fff3cd") if matched_row.feedback_changed else QColor("#ffffff")
-        for c in range(self._tab_validation.columnCount()):
-            cell = self._tab_validation.item(table_row, c)
-            if cell:
-                cell.setBackground(bg_val)
-        # col 1·2: 원래 ≠ 제안일 때 빨간 배경으로 덮어쓰기
-        diff_color = QColor("#ffb3b3") if matched_row.feedback_changed else None
+        # ── Feedback 확인 필요 탭 갱신: col 1·2 빨간색/복원 ─────────
         item1 = self._tab_validation.item(table_row, 1)
         if item1:
-            item1.setBackground(diff_color if diff_color else bg_val)
+            item1.setBackground(QColor("#ffb3b3") if matched_row.feedback_changed else QColor("#ffffff"))
         combo = self._tab_validation.cellWidget(table_row, 2)
         if combo:
-            combo.setStyleSheet("QComboBox { background-color: #ffb3b3; }" if diff_color else "")
+            combo.setStyleSheet("QComboBox { background-color: #ffb3b3; }" if matched_row.feedback_changed else "")
 
         # ── 전체 결과 탭 즉시 동기화 ────────────────────────────────
         self._sync_all_tab_row(matched_row.key, new_value, matched_row.feedback_changed)
