@@ -978,6 +978,10 @@ class MainWindow(QMainWindow):
                 lambda text, _mr=mr_ref, _r=r: self._on_feedback_changed(_mr, text, _r)
             )
             self._tab_validation.setCellWidget(r, 2, combo)
+            # col 1·2 빨간 배경: 원래 Feedback ≠ 제안 Feedback
+            if matched_row.original_feedback != matched_row.final_feedback:
+                self._tab_validation.item(r, 1).setBackground(QColor("#ffb3b3"))
+                combo.setStyleSheet("QComboBox { background-color: #ffb3b3; }")
             # col 3: 상세내용
             self._tab_validation.setItem(r, 3, _table_item(v.current_detail))
             # col 4: 추천 Feedback
@@ -1034,6 +1038,14 @@ class MainWindow(QMainWindow):
             cell = self._tab_validation.item(table_row, c)
             if cell:
                 cell.setBackground(bg_val)
+        # col 1·2: 원래 ≠ 제안일 때 빨간 배경으로 덮어쓰기
+        diff_color = QColor("#ffb3b3") if matched_row.feedback_changed else None
+        item1 = self._tab_validation.item(table_row, 1)
+        if item1:
+            item1.setBackground(diff_color if diff_color else bg_val)
+        combo = self._tab_validation.cellWidget(table_row, 2)
+        if combo:
+            combo.setStyleSheet("QComboBox { background-color: #ffb3b3; }" if diff_color else "")
 
         # ── 전체 결과 탭 즉시 동기화 ────────────────────────────────
         self._sync_all_tab_row(matched_row.key, new_value, matched_row.feedback_changed)
