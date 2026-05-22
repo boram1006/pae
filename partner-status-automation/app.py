@@ -519,19 +519,10 @@ class MainWindow(QMainWindow):
         lay.setSpacing(6)
         self._cards: Dict[str, SummaryCard] = {}
         defs = [
-            ("total_final",   "최종 파일\n전체 키"),
-            ("total_alba",    "알바 파일\n키 수"),
-            ("matched",       "매칭 성공"),
-            ("unmatched",     "미매칭"),
-            ("date_filtered", "날짜\n필터 제외"),
-            ("alba_only",     "알바만\n존재"),
-            ("duplicates",    "중복 키"),
-            ("v_normal",      "검증 정상"),
-            ("v_check",       "확인 필요"),
-            ("v_missing",     "누락 의심"),
-            ("v_short",       "상세내용\n부족"),
-            ("v_none",        "미입력"),
-            ("v_unverified",  "미검증"),
+            ("matched",          "매칭 성공"),
+            ("unmatched",        "미매칭"),
+            ("v_feedback_check", "Feedback\n확인 필요"),
+            ("date_filtered",    "날짜\n필터 제외"),
         ]
         for key, label in defs:
             card = SummaryCard(label)
@@ -815,19 +806,15 @@ class MainWindow(QMainWindow):
         from collections import Counter
         vc = Counter(v.status for v in vr)
 
-        self._cards["total_final"].set_value(mr.total_final_keys)
-        self._cards["total_alba"].set_value(mr.total_alba_keys)
         self._cards["matched"].set_value(len(mr.matched))
         self._cards["unmatched"].set_value(len(mr.unmatched))
+        feedback_check_count = sum(
+            vc.get(s, 0) for s in _FEEDBACK_CHECK_STATUSES
+        )
+        self._cards["v_feedback_check"].set_value(feedback_check_count)
         self._cards["date_filtered"].set_value(len(mr.date_filtered))
-        self._cards["alba_only"].set_value(len(mr.alba_only))
-        self._cards["duplicates"].set_value(len(mr.duplicates))
-        self._cards["v_normal"].set_value(vc.get(ValidationStatus.NORMAL, 0))
-        self._cards["v_check"].set_value(vc.get(ValidationStatus.CHECK_NEEDED, 0))
-        self._cards["v_missing"].set_value(vc.get(ValidationStatus.MISSING_SUSPECTED, 0))
-        self._cards["v_short"].set_value(vc.get(ValidationStatus.DETAIL_INSUFFICIENT, 0))
-        self._cards["v_none"].set_value(vc.get(ValidationStatus.NOT_ENTERED, 0))
-        self._cards["v_unverified"].set_value(vc.get(ValidationStatus.NOT_VERIFIED, 0))
+        filter_active = debug.get("filter_active", False)
+        self._cards["date_filtered"].setVisible(filter_active)
 
         if debug.get("filter_active") and debug.get("filter_date"):
             fd = debug["filter_date"]
