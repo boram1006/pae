@@ -9,9 +9,8 @@ from typing import Dict, List, Optional, Tuple
 
 from rapidfuzz import fuzz, process
 
-from src.excel_io import read_sheet_data_with_duplicates
 from src.matcher import MatchedRow
-from src.utils import RefColumnConfig, normalize_text, safe_str
+from src.utils import normalize_text, safe_str
 
 
 # ---------------------------------------------------------------------------
@@ -41,44 +40,6 @@ class ValidationResult:
     similarity_score: float = 0.0
     status: ValidationStatus = ValidationStatus.NOT_VERIFIED
     note: str = ""
-
-
-# ---------------------------------------------------------------------------
-# Reference data loading
-# ---------------------------------------------------------------------------
-
-def load_reference_data(
-    ref_path: str,
-    ref_sheet: str,
-    ref_col_config: RefColumnConfig,
-) -> List[Dict[str, str]]:
-    """
-    Load (key, feedback, detail) triples from the answer-key file.
-    Returns list of {"key": ..., "feedback": ..., "detail": ..., "norm_detail": ...}.
-    Hidden columns/rows are included because we use openpyxl directly.
-    """
-    value_cols = [ref_col_config.partner_feedback, ref_col_config.detail]
-    raw, _ = read_sheet_data_with_duplicates(
-        ref_path, ref_sheet, ref_col_config.key, value_cols
-    )
-
-    records: List[Dict[str, str]] = []
-    for key, occurrences in raw.items():
-        for occ in occurrences:
-            fb = safe_str(occ.get(ref_col_config.partner_feedback, ""))
-            dt = safe_str(occ.get(ref_col_config.detail, ""))
-            norm_dt = normalize_text(dt)
-            if not norm_dt and not fb:
-                continue
-            records.append(
-                {
-                    "key": key,
-                    "feedback": fb,
-                    "detail": dt,
-                    "norm_detail": norm_dt,
-                }
-            )
-    return records
 
 
 # ---------------------------------------------------------------------------

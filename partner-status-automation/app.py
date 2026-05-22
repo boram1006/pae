@@ -51,17 +51,14 @@ from src.feedback_manager import FeedbackManager
 from src.matcher import MatchResult, MatchedRow, build_changes, run_matching
 from src.utils import (
     ColumnConfig,
-    RefColumnConfig,
     generate_output_filename,
     is_valid_excel_column,
     safe_str,
     validate_column_config,
-    validate_ref_column_config,
 )
 from src.validator import (
     ValidationResult,
     ValidationStatus,
-    load_reference_data,
     validate_all,
 )
 
@@ -100,10 +97,7 @@ class WorkerThread(QThread):
         self,
         final_path, final_sheet,
         alba_path, alba_sheet,
-        ref_path, ref_sheet,
         col_config: ColumnConfig,
-        ref_col_config: RefColumnConfig,
-        use_validation: bool,
         filter_date: Optional[date],
         keyword_rules: Optional[Dict] = None,
     ):
@@ -112,11 +106,7 @@ class WorkerThread(QThread):
         self.final_sheet = final_sheet
         self.alba_path = alba_path
         self.alba_sheet = alba_sheet
-        self.ref_path = ref_path
-        self.ref_sheet = ref_sheet
         self.col_config = col_config
-        self.ref_col_config = ref_col_config
-        self.use_validation = use_validation
         self.filter_date = filter_date
         self.keyword_rules = keyword_rules or {}
 
@@ -129,24 +119,12 @@ class WorkerThread(QThread):
                 filter_date=self.filter_date,
             )
 
-            # Always run rule-based validation on matched rows.
-            # Reference data enhances it with similarity matching.
-            ref_data = None
-            ref_count = 0
-            if self.use_validation and self.ref_path:
-                ref_data = load_reference_data(
-                    self.ref_path, self.ref_sheet, self.ref_col_config
-                )
-                ref_count = len(ref_data)
-
             val_results = validate_all(
-                match_result.matched, self.col_config, ref_data,
+                match_result.matched, self.col_config, None,
                 keyword_rules=self.keyword_rules,
             )
 
             debug_info = {
-                "has_ref": ref_data is not None,
-                "ref_count": ref_count,
                 "validation_ran": True,
                 "filter_date": self.filter_date,
                 "filter_active": self.filter_date is not None,
@@ -232,11 +210,6 @@ _FIELD_LABELS = {
     "reply_date":       "회신일",
 }
 
-_REF_FIELD_LABELS = {
-    "key":              "정답지 키값 컬럼",
-    "partner_feedback": "정답지 협력사 Feedback",
-    "detail":           "정답지 상세내용",
-}
 
 
 class ColumnMappingWidget(QGroupBox):
@@ -302,7 +275,6 @@ class MainWindow(QMainWindow):
         # State
         self._final_path: Optional[str] = None
         self._alba_path: Optional[str] = None
-        self._ref_path: Optional[str] = None
         self._match_result: Optional[MatchResult] = None
         self._val_results: List[ValidationResult] = []
         self._val_debug: Dict = {}
@@ -387,27 +359,11 @@ class MainWindow(QMainWindow):
         mapping_row.addStretch()
         lay.addLayout(mapping_row)
 
-        # Ref column mapping (hidden until ref file selected)
-        self._ref_mapping_group = QGroupBox("정답지 컬럼 설정")
-        self._ref_col_mapping = ColumnMappingWidget(
-            "", _REF_FIELD_LABELS, RefColumnConfig().to_dict()
-        )
-        ref_grp_lay = QVBoxLayout(self._ref_mapping_group)
-        ref_grp_lay.addWidget(self._ref_col_mapping)
-        self._ref_mapping_group.setVisible(False)
-        lay.addWidget(self._ref_mapping_group)
         lay.addWidget(_make_separator())
 
         # Date filter
         lay.addWidget(_make_header("업데이트 기준 날짜"))
         lay.addWidget(self._build_date_filter_section())
-        lay.addWidget(_make_separator())
-
-        # Options
-        lay.addWidget(_make_header("옵션 설정"))
-        self._opt_validation = QCheckBox("정답지 검증 사용 (정답지 파일 선택 시 정답지 기반 유사도 활성화)")
-        self._opt_validation.setChecked(True)
-        lay.addWidget(self._opt_validation)
         lay.addWidget(_make_separator())
 
         # Execute button
@@ -455,7 +411,6 @@ class MainWindow(QMainWindow):
 
         lay.addLayout(_row("필수  최종 완성 파일:", "최종 파일 선택", "_final_path_lbl", self._select_final))
         lay.addLayout(_row("필수  알바 취합 파일:", "알바 파일 선택", "_alba_path_lbl",  self._select_alba))
-        lay.addLayout(_row("선택  5월 정답지 파일:", "정답지 파일 선택 (선택)", "_ref_path_lbl", self._select_ref))
         return w
 
     def _build_sheet_section(self) -> QWidget:
@@ -465,14 +420,8 @@ class MainWindow(QMainWindow):
         self._final_sheet_combo = QComboBox(); self._final_sheet_combo.setMinimumWidth(200)
         self._final_sheet_combo.currentTextChanged.connect(lambda: self._refresh_hidden_info("final"))
         self._alba_sheet_combo  = QComboBox(); self._alba_sheet_combo.setMinimumWidth(200)
-        self._ref_sheet_combo   = QComboBox(); self._ref_sheet_combo.setMinimumWidth(200)
-        self._ref_sheet_combo.currentTextChanged.connect(lambda: self._refresh_hidden_info("ref"))
         form.addRow("최종 파일 시트:", self._final_sheet_combo)
         form.addRow("알바 파일 시트:", self._alba_sheet_combo)
-        self._ref_sheet_lbl = QLabel("정답지 파일 시트:")
-        form.addRow(self._ref_sheet_lbl, self._ref_sheet_combo)
-        self._ref_sheet_combo.setVisible(False)
-        self._ref_sheet_lbl.setVisible(False)
         return w
 
     def _build_date_filter_section(self) -> QWidget:
@@ -528,7 +477,7 @@ class MainWindow(QMainWindow):
         )
         lay.addWidget(self._date_filter_info_lbl)
 
-        self._val_debug_lbl = QLabel("정답지 검증이 실행되지 않았습니다.")
+        self._val_debug_lbl = QLabel("검증이 실행되지 않았습니다.")
         self._val_debug_lbl.setWordWrap(True)
         self._val_debug_lbl.setStyleSheet(
             "background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:4px 8px;"
@@ -702,21 +651,7 @@ class MainWindow(QMainWindow):
         self._alba_path_lbl.setStyleSheet("color:#1a3c8f;font-weight:bold;")
         self._load_sheets(path, self._alba_sheet_combo)
 
-    def _select_ref(self):
-        path = self._select_file("5월 정답지 파일 선택")
-        if not path:
-            return
-        if not path.lower().endswith((".xlsx", ".xlsm")):
-            QMessageBox.warning(self, "파일 오류", ".xlsx / .xlsm 파일만 선택 가능합니다.")
-            return
-        self._ref_path = path
-        self._ref_path_lbl.setText(Path(path).name)
-        self._ref_path_lbl.setStyleSheet("color:#1a3c8f;font-weight:bold;")
-        self._load_sheets(path, self._ref_sheet_combo)
-        self._ref_mapping_group.setVisible(True)
-        self._ref_sheet_combo.setVisible(True)
-        self._ref_sheet_lbl.setVisible(True)
-        self._refresh_hidden_info("ref")
+
 
     def _load_sheets(self, path: str, combo: QComboBox):
         try:
@@ -751,8 +686,6 @@ class MainWindow(QMainWindow):
 
         if which in ("final", "all"):
             _describe("최종 파일", self._final_path, self._final_sheet_combo)
-        if which in ("ref", "all") and self._ref_path:
-            _describe("정답지 파일", self._ref_path, self._ref_sheet_combo)
 
         self._hidden_info_lbl.setText(
             "\n".join(messages) if messages else "파일과 시트를 선택하면 여기에 안내가 표시됩니다."
@@ -775,18 +708,6 @@ class MainWindow(QMainWindow):
             return None
         return cfg
 
-    def _get_ref_col_config(self) -> Optional[RefColumnConfig]:
-        vals = self._ref_col_mapping.get_values()
-        try:
-            cfg = RefColumnConfig(**vals)
-        except TypeError as e:
-            QMessageBox.warning(self, "설정 오류", f"정답지 컬럼 설정 오류:\n{e}")
-            return None
-        errors = validate_ref_column_config(cfg)
-        if errors:
-            QMessageBox.warning(self, "정답지 컬럼 오류", "\n".join(errors))
-            return None
-        return cfg
 
     def _get_filter_date(self) -> Optional[date]:
         if not self._date_filter_cb.isChecked():
@@ -815,28 +736,19 @@ class MainWindow(QMainWindow):
         col_config = self._get_col_config()
         if col_config is None:
             return
-        ref_col_config = self._get_ref_col_config()
-        if ref_col_config is None:
-            return
 
-        use_validation = self._opt_validation.isChecked()
-        filter_date    = self._get_filter_date()
+        filter_date = self._get_filter_date()
 
         self._run_btn.setEnabled(False)
         self._progress.setVisible(True)
         self.statusBar().showMessage("취합 실행 중 …")
 
-        ref_sheet = self._ref_sheet_combo.currentText() if self._ref_path else ""
         self._worker = WorkerThread(
             final_path=self._final_path,
             final_sheet=self._final_sheet_combo.currentText(),
             alba_path=self._alba_path,
             alba_sheet=self._alba_sheet_combo.currentText(),
-            ref_path=self._ref_path or "",
-            ref_sheet=ref_sheet,
             col_config=col_config,
-            ref_col_config=ref_col_config,
-            use_validation=use_validation,
             filter_date=filter_date,
             keyword_rules=self._feedback_manager.get_keyword_rules(),
         )
@@ -926,12 +838,8 @@ class MainWindow(QMainWindow):
     def _update_val_debug_label(self, vr: List[ValidationResult], debug: Dict):
         from collections import Counter
         vc = Counter(v.status for v in vr)
-        if not debug.get("has_ref"):
-            ref_msg = "정답지 없음 (규칙 기반만 적용)"
-        else:
-            ref_msg = f"정답지 기준 데이터: {debug.get('ref_count', 0)}건"
         lines = [
-            f"검증 실행: {'예' if debug.get('validation_ran') else '아니오'}  |  {ref_msg}",
+            f"검증 실행: {'예' if debug.get('validation_ran') else '아니오'}  |  키워드 기반 검증",
             f"검증 대상: {len(vr)}건  |  "
             f"정상: {vc.get(ValidationStatus.NORMAL,0)}  |  "
             f"확인필요: {vc.get(ValidationStatus.CHECK_NEEDED,0)}  |  "
