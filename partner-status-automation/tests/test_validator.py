@@ -7,6 +7,7 @@ from src.validator import (
     ValidationStatus,
     validate_single,
     validate_all,
+    suggest_feedback_from_detail,
 )
 
 from src.matcher import MatchedRow
@@ -50,8 +51,6 @@ def test_with_matching_reference():
     }]
     r = validate_single("K1", "견적 완료", "업체 담당자 통화 후 견적 회신 받음", ref)
     assert r.status == ValidationStatus.NORMAL
-    assert r.recommended_feedback == "견적 완료"
-    assert r.similarity_score >= 70
 
 
 def test_with_differing_feedback():
@@ -84,15 +83,42 @@ def test_low_similarity_returns_not_verified():
     assert r.status in (ValidationStatus.NOT_VERIFIED, ValidationStatus.CHECK_NEEDED)
 
 
-def test_similarity_score_populated():
-    ref = [{"key": "K1", "feedback": "견적 완료",
-            "detail": "담당자 통화", "norm_detail": "담당자 통화"}]
-    r = validate_single("K1", "견적 완료", "담당자 통화", ref)
-    assert r.similarity_score > 0
-
-
 # ---------------------------------------------------------------------------
 # validate_all
+# ---------------------------------------------------------------------------
+# suggest_feedback_from_detail
+# ---------------------------------------------------------------------------
+
+def test_suggest_feedback_finds_best_keyword_match():
+    rules = {
+        "견적완료": ["견적", "회신", "완료"],
+        "수신불가": ["수신불가", "연결안", "독려"],
+    }
+    assert suggest_feedback_from_detail("견적서를 회신했습니다", rules) == "견적완료"
+
+
+def test_suggest_feedback_picks_most_keyword_matches():
+    rules = {
+        "A": ["견적"],
+        "B": ["견적", "회신", "완료"],
+    }
+    assert suggest_feedback_from_detail("견적 회신 완료했습니다", rules) == "B"
+
+
+def test_suggest_feedback_returns_empty_when_no_match():
+    rules = {"견적완료": ["견적"]}
+    assert suggest_feedback_from_detail("전혀 관계없는 내용", rules) == ""
+
+
+def test_suggest_feedback_empty_detail_returns_empty():
+    rules = {"견적완료": ["견적"]}
+    assert suggest_feedback_from_detail("", rules) == ""
+
+
+def test_suggest_feedback_empty_rules_returns_empty():
+    assert suggest_feedback_from_detail("견적 회신", {}) == ""
+
+
 # ---------------------------------------------------------------------------
 
 def _make_matched_row(key, feedback="", detail="") -> MatchedRow:

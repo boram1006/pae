@@ -35,11 +35,32 @@ class ValidationResult:
     key: str
     current_feedback: str
     current_detail: str
-    recommended_feedback: str = ""
-    similar_ref_detail: str = ""
-    similarity_score: float = 0.0
+    suggested_feedback: str = ""   # keyword-based suggestion from detail
     status: ValidationStatus = ValidationStatus.NOT_VERIFIED
     note: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Keyword-based suggestion
+# ---------------------------------------------------------------------------
+
+def suggest_feedback_from_detail(
+    detail: str,
+    keyword_rules: Dict[str, List[str]],
+) -> str:
+    """Scan all keyword_rules and return the label whose keywords best match detail."""
+    norm_dt = normalize_text(detail)
+    if not norm_dt or not keyword_rules:
+        return ""
+    best_label = ""
+    best_count = 0
+    for label, keywords in keyword_rules.items():
+        norm_kws = [normalize_text(kw) for kw in keywords]
+        count = sum(1 for kw in norm_kws if kw and kw in norm_dt)
+        if count > best_count:
+            best_count = count
+            best_label = label
+    return best_label
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +107,7 @@ def validate_single(
         key=key,
         current_feedback=feedback,
         current_detail=detail,
+        suggested_feedback=suggest_feedback_from_detail(detail, keyword_rules or {}),
     )
 
     # Rule 1
@@ -147,11 +169,7 @@ def validate_single(
         return result
 
     best_norm_detail, score, idx = match
-    result.similarity_score = score
     best_ref = reference_data[idx]
-    result.similar_ref_detail = best_ref["detail"]
-    result.recommended_feedback = best_ref["feedback"]
-
     norm_rec_fb = normalize_text(best_ref["feedback"])
 
     if score >= _SIM_THRESHOLD:

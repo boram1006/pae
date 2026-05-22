@@ -191,7 +191,8 @@ def _fill_table(table: QTableWidget, headers: List[str], rows: List[List[Any]]):
         table.insertRow(r)
         for c, val in enumerate(row_data):
             table.setItem(r, c, _table_item(safe_str(val)))
-    table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+    table.resizeColumnsToContents()
+    table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
     table.horizontalHeader().setStretchLastSection(True)
 
 
@@ -541,8 +542,7 @@ class MainWindow(QMainWindow):
     def _build_inner_result_tabs(self) -> QTabWidget:
         tabs = QTabWidget()
         val_cols = [
-            "키값", "원래 Feedback", "제안 Feedback", "상세내용",
-            "추천 Feedback", "유사도", "검증 결과", "수정됨",
+            "키값", "원래 Feedback", "제안 Feedback", "상세내용", "검증 결과", "수정됨",
         ]
         self._tab_matched      = _make_table(["키값", "최종행", "알바행"] + list(_FIELD_LABELS.values())[1:])
         self._tab_unmatched    = _make_table(["키값", "최종행"])
@@ -963,39 +963,40 @@ class MainWindow(QMainWindow):
             self._tab_validation.setItem(r, 0, _table_item(v.key, bg))
             # col 1: 원래 Feedback (read-only)
             self._tab_validation.setItem(r, 1, _table_item(matched_row.original_feedback))
-            # col 2: 최종 Feedback (editable combobox)
+            # col 2: 제안 Feedback (editable combo — keyword suggestion pre-filled)
             combo = QComboBox()
             options = self._get_feedback_options(matched_row)
             combo.addItems(options)
-            idx = combo.findText(matched_row.final_feedback)
+            initial = v.suggested_feedback or matched_row.final_feedback
+            idx = combo.findText(initial)
             if idx >= 0:
                 combo.setCurrentIndex(idx)
-            elif matched_row.final_feedback:
-                combo.addItem(matched_row.final_feedback)
-                combo.setCurrentText(matched_row.final_feedback)
+            elif initial:
+                combo.addItem(initial)
+                combo.setCurrentText(initial)
+            # 제안값으로 데이터 모델 업데이트 (signal 연결 전이므로 _on_feedback_changed 미호출)
+            matched_row.final_feedback = combo.currentText()
+            matched_row.feedback_changed = (matched_row.final_feedback != matched_row.original_feedback)
+            # col 1·2 빨간 배경: 원래 Feedback ≠ 제안 Feedback
+            if matched_row.feedback_changed:
+                self._tab_validation.item(r, 1).setBackground(QColor("#ffb3b3"))
+                combo.setStyleSheet("QComboBox { background-color: #ffb3b3; }")
             mr_ref = matched_row
             combo.currentTextChanged.connect(
                 lambda text, _mr=mr_ref, _r=r: self._on_feedback_changed(_mr, text, _r)
             )
             self._tab_validation.setCellWidget(r, 2, combo)
-            # col 1·2 빨간 배경: 원래 Feedback ≠ 제안 Feedback
-            if matched_row.original_feedback != matched_row.final_feedback:
-                self._tab_validation.item(r, 1).setBackground(QColor("#ffb3b3"))
-                combo.setStyleSheet("QComboBox { background-color: #ffb3b3; }")
             # col 3: 상세내용
             self._tab_validation.setItem(r, 3, _table_item(v.current_detail))
-            # col 4: 추천 Feedback
-            self._tab_validation.setItem(r, 4, _table_item(v.recommended_feedback))
-            # col 5: 유사도
-            sim = f"{v.similarity_score:.0f}" if v.similarity_score else ""
-            self._tab_validation.setItem(r, 5, _table_item(sim))
-            # col 6: 검증 결과
-            self._tab_validation.setItem(r, 6, _table_item(v.status.value, bg))
-            # col 7: 수정됨
-            self._tab_validation.setItem(r, 7, _table_item(""))
+            # col 4: 검증 결과
+            self._tab_validation.setItem(r, 4, _table_item(v.status.value, bg))
+            # col 5: 수정됨
+            changed_text = "수정됨" if matched_row.feedback_changed else ""
+            self._tab_validation.setItem(r, 5, _table_item(changed_text))
 
+        self._tab_validation.resizeColumnsToContents()
         self._tab_validation.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
+            QHeaderView.ResizeMode.Interactive
         )
         self._tab_validation.horizontalHeader().setStretchLastSection(True)
 
@@ -1030,7 +1031,7 @@ class MainWindow(QMainWindow):
 
         # ── Feedback 확인 필요 탭 갱신 ──────────────────────────────
         changed_text = "수정됨" if matched_row.feedback_changed else ""
-        changed_item = self._tab_validation.item(table_row, 7)
+        changed_item = self._tab_validation.item(table_row, 5)  # col 5: 수정됨
         if changed_item:
             changed_item.setText(changed_text)
         bg_val = QColor("#fff3cd") if matched_row.feedback_changed else QColor("#ffffff")

@@ -110,8 +110,8 @@ def test_sync_multiple_keys_only_updates_target(win):
 def _make_validation_row(win, row_idx: int = 0):
     """_tab_validation 에 더미 행 하나를 추가하는 헬퍼."""
     win._tab_validation.setRowCount(row_idx + 1)
-    win._tab_validation.setColumnCount(8)
-    for c in range(8):
+    win._tab_validation.setColumnCount(6)
+    for c in range(6):
         win._tab_validation.setItem(row_idx, c, QTableWidgetItem(""))
 
 
@@ -153,8 +153,8 @@ def test_on_feedback_changed_updates_validation_tab_changed_col(win):
     mr = MatchedRow("K1", 1, 1, {}, original_feedback="원래값", final_feedback="원래값")
     win._on_feedback_changed(mr, "부재", 0)
 
-    # col 7 in validation tab = "수정됨"
-    assert win._tab_validation.item(0, 7).text() == "수정됨"
+    # col 5 in validation tab = "수정됨"
+    assert win._tab_validation.item(0, 5).text() == "수정됨"
 
 
 def test_on_feedback_changed_reverts_correctly(win):
