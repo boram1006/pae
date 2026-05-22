@@ -11,14 +11,14 @@ from typing import Dict, List, Optional
 _DEFAULT_MASTER: dict = {
     "version": 1,
     "items": [
-        {"id": "CALL_DONE",       "label": "통화완료",        "active": True,  "aliases": ["통화 완료", "연락 완료"],      "sort_order": 10},
-        {"id": "NO_ANSWER",       "label": "부재",            "active": True,  "aliases": ["미연결", "전화 안받음", "부재중"], "sort_order": 20},
-        {"id": "CALL_BACK",       "label": "재통화 요청",      "active": True,  "aliases": ["다시 전화", "재연락 필요"],     "sort_order": 30},
-        {"id": "QUOTE_EXPECTED",  "label": "견적 회신 예정",   "active": True,  "aliases": ["회신 예정", "견적 예정"],      "sort_order": 40},
-        {"id": "QUOTE_RECEIVED",  "label": "견적 회신 완료",   "active": True,  "aliases": ["회신 완료", "견적 받음"],      "sort_order": 50},
-        {"id": "NEEDS_CHECK",     "label": "담당자 확인 필요", "active": True,  "aliases": ["확인 필요", "담당 확인"],      "sort_order": 60},
-        {"id": "REJECTED",        "label": "거절",            "active": True,  "aliases": ["진행 불가", "불가"],          "sort_order": 70},
-        {"id": "OTHER",           "label": "기타",            "active": True,  "aliases": [],                            "sort_order": 999},
+        {"id": "CALL_DONE",       "label": "통화완료",        "active": True,  "aliases": ["통화 완료", "연락 완료"],       "sort_order": 10,  "expected_keywords": ["통화", "연락", "완료"]},
+        {"id": "NO_ANSWER",       "label": "부재",            "active": True,  "aliases": ["미연결", "전화 안받음", "부재중"], "sort_order": 20, "expected_keywords": ["부재", "미연결", "안받"]},
+        {"id": "CALL_BACK",       "label": "재통화 요청",      "active": True,  "aliases": ["다시 전화", "재연락 필요"],     "sort_order": 30,  "expected_keywords": ["재통화", "다시", "연락"]},
+        {"id": "QUOTE_EXPECTED",  "label": "견적 회신 예정",   "active": True,  "aliases": ["회신 예정", "견적 예정"],      "sort_order": 40,  "expected_keywords": ["견적", "예정", "회신"]},
+        {"id": "QUOTE_RECEIVED",  "label": "견적 회신 완료",   "active": True,  "aliases": ["회신 완료", "견적 받음"],      "sort_order": 50,  "expected_keywords": ["견적", "완료", "회신"]},
+        {"id": "NEEDS_CHECK",     "label": "담당자 확인 필요", "active": True,  "aliases": ["확인 필요", "담당 확인"],      "sort_order": 60,  "expected_keywords": ["담당자", "확인", "필요"]},
+        {"id": "REJECTED",        "label": "거절",            "active": True,  "aliases": ["진행 불가", "불가"],          "sort_order": 70,   "expected_keywords": ["거절", "불가", "거부"]},
+        {"id": "OTHER",           "label": "기타",            "active": True,  "aliases": [],                            "sort_order": 999,  "expected_keywords": []},
     ],
 }
 
@@ -98,6 +98,7 @@ class FeedbackManager:
                 "active": True,
                 "aliases": [],
                 "sort_order": max_order + 10,
+                "expected_keywords": [],
             }
         )
 
@@ -124,6 +125,23 @@ class FeedbackManager:
             if item.get("id") == item_id:
                 item["label"] = new_label.strip()
                 return
+
+    def update_keywords(self, item_id: str, keywords: List[str]) -> None:
+        for item in self.data.get("items", []):
+            if item.get("id") == item_id:
+                item["expected_keywords"] = [k for k in keywords if k]
+                return
+
+    def get_keyword_rules(self) -> Dict[str, List[str]]:
+        """Return {label: [keywords]} for active items that have keywords defined."""
+        rules: Dict[str, List[str]] = {}
+        for item in self.get_all_items():
+            if not item.get("active", True):
+                continue
+            keywords = item.get("expected_keywords", [])
+            if keywords:
+                rules[item["label"]] = keywords
+        return rules
 
 
 import re  # noqa: E402 (used in add_item)

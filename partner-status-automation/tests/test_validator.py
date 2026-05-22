@@ -128,6 +128,75 @@ def test_validate_all_result_key_matches():
 
 
 # ---------------------------------------------------------------------------
+# Keyword rules
+# ---------------------------------------------------------------------------
+
+_KEYWORD_RULES = {"견적완료": ["견적", "회신", "완료"]}
+
+
+def test_keyword_match_no_reference_returns_normal():
+    r = validate_single("K1", "견적완료", "견적서를 회신했습니다", None, keyword_rules=_KEYWORD_RULES)
+    assert r.status == ValidationStatus.NORMAL
+
+
+def test_keyword_no_match_returns_check_needed():
+    r = validate_single("K1", "견적완료", "전혀 관계없는 내용입니다 xyz", None, keyword_rules=_KEYWORD_RULES)
+    assert r.status == ValidationStatus.CHECK_NEEDED
+    assert "키워드" in r.note
+
+
+def test_keyword_check_needed_note_mentions_keyword():
+    r = validate_single("K1", "견적완료", "담당자에게 전화했습니다", None, keyword_rules=_KEYWORD_RULES)
+    assert r.status == ValidationStatus.CHECK_NEEDED
+
+
+def test_keyword_rules_feedback_not_in_dict_falls_through():
+    rules = {"다른피드백": ["견적"]}
+    r = validate_single("K1", "견적완료", "어떤 내용입니다", None, keyword_rules=rules)
+    # feedback not in rules, no reference → NOT_VERIFIED
+    assert r.status == ValidationStatus.NOT_VERIFIED
+
+
+def test_keyword_empty_list_skips_check():
+    rules = {"견적완료": []}  # empty keywords → no keyword check
+    r = validate_single("K1", "견적완료", "어떤 내용입니다", None, keyword_rules=rules)
+    assert r.status == ValidationStatus.NOT_VERIFIED  # no keywords defined, no reference
+
+
+def test_keyword_none_rules_behaves_like_before():
+    r = validate_single("K1", "견적완료", "업체 담당자에게 연락했습니다", None, keyword_rules=None)
+    assert r.status == ValidationStatus.NOT_VERIFIED
+
+
+def test_keyword_with_reference_still_uses_rapidfuzz():
+    rules = {"견적 완료": ["견적"]}
+    ref = [{"key": "K1", "feedback": "견적 완료",
+            "detail": "견적서 제출완료", "norm_detail": "견적서 제출완료"}]
+    r = validate_single("K1", "견적 완료", "견적서 제출완료", ref, keyword_rules=rules)
+    assert r.status == ValidationStatus.NORMAL
+
+
+def test_keyword_match_case_insensitive():
+    rules = {"견적완료": ["견적"]}
+    r = validate_single("K1", "견적완료", "QUOTE 견적 완료처리", None, keyword_rules=rules)
+    assert r.status == ValidationStatus.NORMAL
+
+
+def test_validate_all_passes_keyword_rules():
+    rows = [_make_matched_row("K1", feedback="견적완료", detail="견적서를 회신했습니다")]
+    rules = {"견적완료": ["견적"]}
+    results = validate_all(rows, ColumnConfig(), None, keyword_rules=rules)
+    assert results[0].status == ValidationStatus.NORMAL
+
+
+def test_validate_all_keyword_no_match_check_needed():
+    rows = [_make_matched_row("K1", feedback="견적완료", detail="전혀 관계없는 내용 xyz abc")]
+    rules = {"견적완료": ["견적", "회신", "완료"]}
+    results = validate_all(rows, ColumnConfig(), None, keyword_rules=rules)
+    assert results[0].status == ValidationStatus.CHECK_NEEDED
+
+
+# ---------------------------------------------------------------------------
 # Feedback check statuses (ensure tab filter works correctly)
 # ---------------------------------------------------------------------------
 

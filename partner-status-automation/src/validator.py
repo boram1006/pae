@@ -95,6 +95,7 @@ def validate_single(
     feedback: str,
     detail: str,
     reference_data: Optional[List[Dict[str, str]]],
+    keyword_rules: Optional[Dict[str, List[str]]] = None,
 ) -> ValidationResult:
     """
     Classify feedback quality for one row.
@@ -105,8 +106,13 @@ def validate_single(
     2. Detail empty, feedback exists → NORMAL (no detail to verify against)
     3. Detail exists, feedback empty → MISSING_SUSPECTED
     4. Detail too short              → DETAIL_INSUFFICIENT
-    5. No reference data             → NOT_VERIFIED
-    6. Find most similar ref detail via rapidfuzz
+    5. Keyword check (if rules defined for this feedback label):
+       - Any expected keyword found in detail → keyword_matched = True
+       - No keyword found → CHECK_NEEDED (exit early)
+    6. No reference data:
+       - keyword_matched → NORMAL
+       - otherwise       → NOT_VERIFIED
+    7. Find most similar ref detail via rapidfuzz
        - sim >= THRESHOLD & feedback matches ref → NORMAL
        - sim >= THRESHOLD & feedback differs    → CHECK_NEEDED
        - sim >= LOW & < THRESHOLD               → CHECK_NEEDED
@@ -144,13 +150,30 @@ def validate_single(
         result.note = f"상세내용이 너무 짧습니다 ({len(norm_dt)}자)."
         return result
 
-    # Rule 5: no reference
+    # Rule 5: keyword-based check
+    keyword_matched = False
+    fb_key = feedback.strip() if feedback else ""
+    if keyword_rules and fb_key:
+        keywords = keyword_rules.get(fb_key, [])
+        if keywords:
+            norm_keywords = [normalize_text(kw) for kw in keywords]
+            keyword_matched = any(kw and kw in norm_dt for kw in norm_keywords)
+            if not keyword_matched:
+                result.status = ValidationStatus.CHECK_NEEDED
+                result.note = "상세내용에 피드백 관련 키워드가 없습니다."
+                return result
+
+    # Rule 6: no reference
     if not reference_data:
-        result.status = ValidationStatus.NOT_VERIFIED
-        result.note = "정답지 없음 — 자동 판단 불가"
+        if keyword_matched:
+            result.status = ValidationStatus.NORMAL
+            result.note = "키워드 기반 검증 통과"
+        else:
+            result.status = ValidationStatus.NOT_VERIFIED
+            result.note = "정답지 없음 — 자동 판단 불가"
         return result
 
-    # Rule 6: rapidfuzz similarity
+    # Rule 7: rapidfuzz similarity
     ref_details = [r["norm_detail"] for r in reference_data]
     match = process.extractOne(
         norm_dt,
@@ -201,10 +224,12 @@ def validate_all(
     matched_rows: List[MatchedRow],
     col_config,
     reference_data: Optional[List[Dict[str, str]]],
+    keyword_rules: Optional[Dict[str, List[str]]] = None,
 ) -> List[ValidationResult]:
     """
     Validate all matched rows.
     col_config is a ColumnConfig with .partner_feedback and .detail fields.
+    keyword_rules maps feedback label → expected keywords for keyword-based validation.
     """
     results: List[ValidationResult] = []
     fb_col = col_config.partner_feedback
@@ -213,7 +238,7 @@ def validate_all(
     for row in matched_rows:
         feedback = safe_str(row.values.get(fb_col, ""))
         detail = safe_str(row.values.get(dt_col, ""))
-        vr = validate_single(row.key, feedback, detail, reference_data)
+        vr = validate_single(row.key, feedback, detail, reference_data, keyword_rules)
         results.append(vr)
 
     return results

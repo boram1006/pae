@@ -154,3 +154,79 @@ def test_update_label(mgr):
     labels = mgr.get_active_labels()
     assert "전화완료" in labels
     assert "통화완료" not in labels
+
+
+# ---------------------------------------------------------------------------
+# get_keyword_rules
+# ---------------------------------------------------------------------------
+
+def test_get_keyword_rules_returns_rules_for_active_items(tmp_path):
+    data = {
+        "version": 1,
+        "items": [
+            {"id": "A", "label": "견적완료", "active": True, "aliases": [], "sort_order": 1,
+             "expected_keywords": ["견적", "완료"]},
+        ],
+    }
+    p = tmp_path / "fb.json"
+    p.write_text(json.dumps(data, ensure_ascii=False))
+    m = FeedbackManager(str(p))
+    rules = m.get_keyword_rules()
+    assert "견적완료" in rules
+    assert "견적" in rules["견적완료"]
+    assert "완료" in rules["견적완료"]
+
+
+def test_get_keyword_rules_excludes_inactive(tmp_path):
+    data = {
+        "version": 1,
+        "items": [
+            {"id": "A", "label": "견적완료", "active": False, "aliases": [], "sort_order": 1,
+             "expected_keywords": ["견적"]},
+        ],
+    }
+    p = tmp_path / "fb.json"
+    p.write_text(json.dumps(data, ensure_ascii=False))
+    m = FeedbackManager(str(p))
+    assert m.get_keyword_rules() == {}
+
+
+def test_get_keyword_rules_excludes_empty_keywords(tmp_path):
+    data = {
+        "version": 1,
+        "items": [
+            {"id": "A", "label": "견적완료", "active": True, "aliases": [], "sort_order": 1,
+             "expected_keywords": []},
+        ],
+    }
+    p = tmp_path / "fb.json"
+    p.write_text(json.dumps(data, ensure_ascii=False))
+    m = FeedbackManager(str(p))
+    assert m.get_keyword_rules() == {}
+
+
+def test_get_keyword_rules_missing_field_excluded(tmp_path):
+    data = {
+        "version": 1,
+        "items": [
+            {"id": "A", "label": "견적완료", "active": True, "aliases": [], "sort_order": 1},
+        ],
+    }
+    p = tmp_path / "fb.json"
+    p.write_text(json.dumps(data, ensure_ascii=False))
+    m = FeedbackManager(str(p))
+    assert m.get_keyword_rules() == {}
+
+
+def test_update_keywords(mgr):
+    mgr.update_keywords("CALL_DONE", ["통화", "연락"])
+    rules = mgr.get_keyword_rules()
+    assert "통화완료" in rules
+    assert "통화" in rules["통화완료"]
+
+
+def test_add_item_has_empty_keywords(mgr):
+    mgr.add_item("신규항목")
+    items = [i for i in mgr.get_all_items() if i["label"] == "신규항목"]
+    assert "expected_keywords" in items[0]
+    assert items[0]["expected_keywords"] == []

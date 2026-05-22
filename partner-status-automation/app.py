@@ -105,6 +105,7 @@ class WorkerThread(QThread):
         ref_col_config: RefColumnConfig,
         use_validation: bool,
         filter_date: Optional[date],
+        keyword_rules: Optional[Dict] = None,
     ):
         super().__init__()
         self.final_path = final_path
@@ -117,6 +118,7 @@ class WorkerThread(QThread):
         self.ref_col_config = ref_col_config
         self.use_validation = use_validation
         self.filter_date = filter_date
+        self.keyword_rules = keyword_rules or {}
 
     def run(self):
         try:
@@ -138,7 +140,8 @@ class WorkerThread(QThread):
                 ref_count = len(ref_data)
 
             val_results = validate_all(
-                match_result.matched, self.col_config, ref_data
+                match_result.matched, self.col_config, ref_data,
+                keyword_rules=self.keyword_rules,
             )
 
             debug_info = {
@@ -629,8 +632,8 @@ class MainWindow(QMainWindow):
         lay.addWidget(hint)
 
         self._feedback_table = QTableWidget()
-        self._feedback_table.setColumnCount(5)
-        self._feedback_table.setHorizontalHeaderLabels(["ID", "라벨", "활성", "유사어", "순서"])
+        self._feedback_table.setColumnCount(6)
+        self._feedback_table.setHorizontalHeaderLabels(["ID", "라벨", "활성", "유사어", "순서", "키워드 (쉼표 구분)"])
         self._feedback_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._feedback_table.horizontalHeader().setStretchLastSection(True)
         lay.addWidget(self._feedback_table, stretch=1)
@@ -835,6 +838,7 @@ class MainWindow(QMainWindow):
             ref_col_config=ref_col_config,
             use_validation=use_validation,
             filter_date=filter_date,
+            keyword_rules=self._feedback_manager.get_keyword_rules(),
         )
         self._worker.finished.connect(self._on_run_finished)
         self._worker.error.connect(self._on_run_error)
@@ -1146,6 +1150,8 @@ class MainWindow(QMainWindow):
             self._feedback_table.setItem(r, 2, act_item)
             self._feedback_table.setItem(r, 3, _table_item(", ".join(item.get("aliases", []))))
             self._feedback_table.setItem(r, 4, _table_item(str(item.get("sort_order", 999))))
+            kw_item = QTableWidgetItem(", ".join(item.get("expected_keywords", [])))
+            self._feedback_table.setItem(r, 5, kw_item)
         self._feedback_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
         )
@@ -1168,12 +1174,16 @@ class MainWindow(QMainWindow):
             self._refresh_feedback_table()
 
     def _on_save_feedback_master(self):
-        # Apply label edits from table before saving
+        # Apply label and keyword edits from table before saving
         items = self._feedback_manager.get_all_items()
         for r, item in enumerate(items):
             lbl_cell = self._feedback_table.item(r, 1)
             if lbl_cell:
                 item["label"] = lbl_cell.text().strip()
+            kw_cell = self._feedback_table.item(r, 5)
+            if kw_cell:
+                kws = [k.strip() for k in kw_cell.text().split(",") if k.strip()]
+                item["expected_keywords"] = kws
         try:
             self._feedback_manager.save()
             QMessageBox.information(
