@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional
@@ -163,3 +163,66 @@ def validate_ref_column_config(cfg: RefColumnConfig) -> List[str]:
         if not is_valid_excel_column(col):
             errors.append(f"정답지 '{field_name}' 의 컬럼값 '{col}' 이 유효하지 않습니다.")
     return errors
+
+
+# ---------------------------------------------------------------------------
+# Date parsing
+# ---------------------------------------------------------------------------
+
+def parse_date(value) -> Optional[date]:
+    """Parse various date representations to a Python date object.
+
+    Handles: datetime, date, Excel serial int/float, and string formats
+    (YYYY-MM-DD, YYYY.MM.DD, YYYY/MM/DD, M/D, MM/DD).
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, (int, float)):
+        try:
+            from openpyxl.utils.datetime import from_excel
+            dt = from_excel(int(value))
+            if isinstance(dt, datetime):
+                return dt.date()
+            if isinstance(dt, date):
+                return dt
+        except Exception:
+            pass
+        return None
+
+    s = str(value).strip()
+    if not s or s.lower() in ("nan", "none", "null"):
+        return None
+
+    current_year = datetime.now().year
+
+    # Full date formats
+    for fmt in ("%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
+
+    # Month/day only: "5/23", "05/23", "5-23", "5.23"
+    for sep in ("/", "-", "."):
+        if sep in s:
+            parts = s.split(sep)
+            if len(parts) == 2:
+                try:
+                    m, d_val = int(parts[0]), int(parts[1])
+                    if 1 <= m <= 12 and 1 <= d_val <= 31:
+                        return date(current_year, m, d_val)
+                except (ValueError, TypeError):
+                    pass
+            break  # only try the first matching separator
+
+    return None
+
+
+def dates_match(value, target: date) -> bool:
+    """Return True if *value* represents the same date as *target*."""
+    parsed = parse_date(value)
+    return parsed == target if parsed is not None else False
