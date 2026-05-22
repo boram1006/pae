@@ -541,7 +541,7 @@ class MainWindow(QMainWindow):
     def _build_inner_result_tabs(self) -> QTabWidget:
         tabs = QTabWidget()
         val_cols = [
-            "키값", "원래 Feedback", "최종 Feedback", "상세내용",
+            "키값", "원래 Feedback", "제안 Feedback", "상세내용",
             "추천 Feedback", "유사도", "검증 결과", "수정됨",
         ]
         self._tab_matched      = _make_table(["키값", "최종행", "알바행"] + list(_FIELD_LABELS.values())[1:])
