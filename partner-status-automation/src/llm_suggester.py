@@ -33,7 +33,10 @@ def suggest_feedback_batch(
         return {}, "openai 패키지 미설치 (pip install openai)"
 
     print(f"[LLM] suggest_feedback_batch 호출: {len(items)}행, {len(feedback_labels)}개 레이블, model={model}", flush=True)
-    client = OpenAI(api_key=api_key)
+    import httpx
+    # Windows에서 SSL 인증서 폐기 확인 실패(CRYPT_E_NO_REVOCATION_CHECK) 우회
+    http_client = httpx.Client(verify=False)
+    client = OpenAI(api_key=api_key, http_client=http_client)
     label_set = set(feedback_labels)
     labels_str = "\n".join(f"- {lb}" for lb in sorted(feedback_labels))
 
